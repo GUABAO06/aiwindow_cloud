@@ -1,0 +1,173 @@
+# ============================================================
+# aiwindow RPM spec 模板（v1.6.0 · 纯 GUI 桌面应用）
+# 由 build.sh 在构建时填充 __VERSION__ / __FILES_EXTRA__ / __SEED_ENC__ / __VENDOR__ 后交由 rpmbuild 打包。
+# v1.5.0 起为纯 GUI 桌面应用版：无 HTTP 管理后台 / static 网页 / /api/*；
+# 仅单个 aiwindow-backend.service（无图形会话时仅初始化数据）。
+# v1.6.0 起新增后台运行 + 开机自启动：关闭窗口仅隐藏驻留（托盘 + 设置页退出按钮）；
+# systemd enable（multi-user.target）+ /etc/xdg/autostart 桌面登录自启双通道。
+# 需要 rpm-build：sudo yum install -y rpm-build
+# 修复项：%global debug_package %{nil} 关闭空 debuginfo 子包；
+#         Source0 显式声明源码包；seed_key.enc / vendor/ 用占位符（缺失时留空），
+#         避免 rpmbuild 报 'File not found' 或 'debuginfo 为空' 而失败。
+# ============================================================
+%global debug_package %{nil}
+Name:           aiwindow
+Version:        __VERSION__
+Release:        1%{?dist}
+Summary:        Lightweight selection AI assistant (pure-GUI desktop app)
+License:        MIT
+Group:          Applications/System
+Packager:       aiwindow <aiwindow@localhost>
+Source0:        aiwindow-%{version}.tar.gz
+
+%description
+划词 AI 助手：桌面悬浮球（GTK3 单窗口双形态，收缩态=仅悬浮球 /
+展开态=圆球+聊天面板同一窗口同步拖拽），多轮对话 + 剪贴板划词带入 +
+问答/代码解释/润色模式。纯 GUI 桌面应用版：后端为进程内模块
+（Python 标准库 sqlite3 + urllib），默认接入智谱 GLM-4.7-Flash
+（https://open.bigmodel.cn/api/paas/v4，可在悬浮窗设置界面修改 key/base_url/model/
+timeout）；悬浮窗展开态内嵌「设置」界面，直读写 SQLite、密钥 AES 加密不落明文、
+展示版本与智谱信息、提供调用日志列表；聊天为进程内直调 backend.handle_chat，
+无 HTTP 服务、无端口监听。桌面登录由 autostart 启动悬浮窗 GUI；systemd 服务
+在无图形会话时仅初始化数据。全部依赖已内置，无需 pip/联网。
+
+%prep
+%setup -q -c -n aiwindow-%{version}
+
+%build
+# no-op：纯文件分发，无需编译
+
+%install
+rm -rf %{buildroot}
+mkdir -p %{buildroot}
+cp -a %{_builddir}/aiwindow-%{version}/. %{buildroot}/
+
+%post
+# 1) 创建系统服务用户（不可登录）
+if ! getent passwd aiwindow >/dev/null 2>&1; then
+    useradd --system --home-dir /var/lib/aiwindow --shell /usr/sbin/nologin \
+        --comment "aiwindow service user" aiwindow \
+        2>/dev/null || useradd --system aiwindow
+fi
+# 2) 数据目录与权限
+mkdir -p /var/lib/aiwindow
+chown -R aiwindow:aiwindow /var/lib/aiwindow 2>/dev/null || true
+chmod 750 /var/lib/aiwindow
+# 3) 密钥文件权限保护（600：仅 owner=aiwindow 可读）
+for f in /etc/aiwindow/bootstrap.key /etc/aiwindow/seed_key.enc; do
+    if [ -f "$f" ]; then
+        chown aiwindow:aiwindow "$f" 2>/dev/null || true
+        chmod 600 "$f"
+    fi
+done
+# 4) 注册服务（唯一 systemd 服务：纯 GUI 桌面应用，无图形会话时仅初始化数据；
+#    桌面 GUI 由 /etc/xdg/autostart 登录自启启动，无本地模型、无 local-llm 服务）
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable aiwindow-backend.service >/dev/null 2>&1 || true
+    systemctl restart aiwindow-backend.service >/dev/null 2>&1 || true
+fi
+echo "aiwindow: 服务已注册（systemctl status aiwindow-backend）"
+echo "aiwindow: 纯 GUI 桌面应用（无 HTTP 管理后台）；登录后悬浮窗自启，展开态设置界面配置"
+exit 0
+
+%preun
+if [ "$1" -eq 0 ]; then
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl stop aiwindow-backend.service >/dev/null 2>&1 || true
+        systemctl disable aiwindow-backend.service >/dev/null 2>&1 || true
+    fi
+fi
+exit 0
+
+%postun
+if [ "$1" -ge 1 ]; then
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl restart aiwindow-backend.service >/dev/null 2>&1 || true
+    fi
+elif [ "$1" -eq 0 ]; then
+    userdel aiwindow >/dev/null 2>&1 || true
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+fi
+exit 0
+
+%files
+%dir /etc/aiwindow
+%config(noreplace) /etc/aiwindow/bootstrap.key
+__SEED_ENC__
+%dir /usr/lib/aiwindow
+/usr/lib/aiwindow/backend.py
+/usr/lib/aiwindow/floating_window.py
+/usr/lib/aiwindow/crypto.py
+__APP_SEED__
+__VENDOR__
+/lib/systemd/system/aiwindow-backend.service
+/etc/xdg/autostart/aiwindow-floating.desktop
+%dir /var/lib/aiwindow
+__FILES_EXTRA__
+
+%changelog
+* Wed Sep 02 2026 aiwindow <aiwindow@localhost> - 1.6.6-1
+- v1.6.6：修复模式下拉「设置…」进不去设置页 bug（floating_window __init__
+  补初始化 _suppress_mode_combo / _last_mode_idx，此前未初始化导致
+  _on_mode_combo_changed 抛 AttributeError）；默认接入智谱 GLM-4.7-Flash
+  并预置种子密钥 seed_key.enc + bootstrap.key（首次运行自动导入，gui zip
+  场景回退读取 backend.py 同目录随包种子）；云端转发支持
+  thinking.type=enabled 深度思考透传。
+* Wed Sep 02 2026 aiwindow <aiwindow@localhost> - 1.6.3-1
+- v1.6.3：悬浮窗优化。① 窗口 set_skip_taskbar_hint/set_skip_pager_hint，
+  不在任务栏/分页器显示；② 设置按钮紧挨收起按钮（btn_fold 之后）；
+  ③ 移除悬浮球右键菜单（退出改为系统托盘图标与「设置」页「退出应用」）。
+* Wed Sep 02 2026 aiwindow <aiwindow@localhost> - 1.6.2-1
+- v1.6.2：修复 build.sh 函数定义顺序 bug。将 say/ok/warn/die 四个函数与
+  颜色变量（C_Y/C_G/C_R/C_N）提前定义到「路径非 ASCII 检测」块之前，
+  修复含中文/非 ASCII 工程路径（如 ~/下载/...）下执行 bash build.sh 时
+  "build.sh: 行 N: warn: 未找到命令" 且因 set -euo pipefail 立即中止的问题；
+  检测块逻辑与文案保持不变。bash -n 语法校验通过。
+* Wed Sep 02 2026 aiwindow <aiwindow@localhost> - 1.6.1-1
+- v1.6.1：修复银河麒麟等桌面无法界面退出问题，新增悬浮球右键菜单。
+  右键点击收缩态悬浮球直接弹出 Gtk 菜单，含「显示/隐藏聊天面板」
+  （_toggle_form）与「退出 aiwindow」（复用 _confirm_exit 确认框后
+  _do_exit 真正退出进程）。右键分支在 button-press-event 中识别
+  event.button==3，不设置拖拽状态、release 不触发折叠，左键单击展开/
+  拖拽吸附零退化。右键悬浮球菜单为最直接退出入口，不依赖系统托盘，
+  无需任务管理器强杀。托盘图标与「设置」页「退出应用」按钮保留为
+  补充入口。既有双形态/三模式/划词/Enter发送/拖拽/设置界面零退化。
+* Wed Sep 02 2026 aiwindow <aiwindow@localhost> - 1.6.0-1
+- v1.6.0：新增「后台运行」与「开机自启动」。
+  后台运行：关闭悬浮窗（delete-event / Alt+F4 / WM 关闭请求）不再退出进程，
+  改为隐藏窗口、悬浮球后台驻留；新增系统托盘图标（点击切换显隐、右键菜单
+  显示悬浮球/退出）；展开态「设置」页新增「退出应用」按钮，点击弹确认框，
+  确认后才真正退出进程。既有双形态/三模式/划词/Enter发送/拖拽/设置界面零退化。
+  开机自启动核对补全：systemd aiwindow-backend.service（rpm %post / deb postinst
+  均 systemctl enable，[Install] WantedBy=multi-user.target）与
+  /etc/xdg/autostart/aiwindow-floating.desktop 桌面登录自启双通道齐备。
+* Mon Sep 01 2026 aiwindow <aiwindow@localhost> - 1.5.0-1
+- v1.5.0：改造为纯 GUI 桌面应用。移除 HTTP 管理后台 / /api/* / /static/* 网页；
+  悬浮窗展开态新增「设置」界面（直读写 SQLite、密钥 AES 加密不落明文、展示版本
+  与智谱信息、调用日志列表，可返回聊天，不退化既有三模式/划词/Enter发送/拖拽）；
+  聊天改为进程内直调 backend.handle_chat；启动入口直接启 GUI，无端口监听、
+  无独立 HTTP 服务；backend.py 降级为进程内模块；打包同步为纯 GUI 形态
+  （systemd 无图形会话仅初始化数据，autostart 登录自启启动悬浮窗）。
+* Mon Sep 01 2026 aiwindow <aiwindow@localhost> - 1.4.0-1
+- v1.4.0：改造为纯云端单进程版。删除本地 llama-server/GGUF/aiwindow-local-llm.service
+  全部逻辑与打包内容；云端默认指向智谱 GLM-4.7-Flash（open.bigmodel.cn/api/paas/v4）；
+  HTTP 后端与 GTK 悬浮窗 GUI 合并为同一进程（GUI 线程内嵌 import floating_window，
+  不再 spawn 独立 GUI 进程）；仅单 aiwindow-backend.service；/api/gui/* 适配单进程
+  语义（start/close/status/state 控制进程内 GUI，stop_all 仅退出当前进程）；
+  desktop 自启改为启动 backend.py（端口被占用时自动降级 GUI-only 复用既有后端）。
+* Mon Aug 31 2026 aiwindow <aiwindow@localhost> - 1.3.0-1
+- v1.3.0：悬浮窗重构为 GTK3+Cairo 单窗口双形态一体化组件（收缩态仅悬浮球 /
+  展开态圆球+聊天面板同窗同步拖拽）；backend.py 新增 /api/gui/start|close|
+  stop_all|status|state 悬浮窗控制接口（进程管理与三态联动）；
+  管理后台 index.html 新增「悬浮窗控制」模块；悬浮窗依赖由 tkinter 切换为
+  python3-gi + gtk3 + cairo（安装包文件清单不变，backend.py/floating_window.py/
+  static/ 均已入包）
+* Fri Aug 28 2026 aiwindow <aiwindow@localhost> - 1.2.0-1
+- v1.2.0：rpm 提升为默认主产物（build.sh 默认只出 rpm，deb 降级为 AIWINDOW_DEB=1 可选）
+- 目标机以 openEuler / 麒麟服务器版等 yum 系为准；/etc/aiwindow 密钥仍权限 600
+* Thu Aug 27 2026 aiwindow <aiwindow@localhost> - 1.1.0-1
+- 初版 RPM：与 deb 同源的纯文件分发安装包（后端/悬浮窗/管理后台/systemd/自启）
+- 支持云端模式与本地 llama-server 模式（内置 llama.cpp + 本地模型）

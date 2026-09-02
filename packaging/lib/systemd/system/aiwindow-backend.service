@@ -1,0 +1,41 @@
+# aiwindow-backend.service — aiwindow 纯 GUI 桌面应用（systemd 唯一服务，v1.6.6）
+# 纯 GUI 桌面应用版：无 HTTP 服务、无端口监听。backend.py 为进程内模块 +
+# 启动入口：无图形会话（systemd 无头环境）时仅初始化数据库/导入种子密钥后
+# 退出；图形桌面登录后由 /etc/xdg/autostart/aiwindow-floating.desktop 启动
+# 悬浮窗 GUI（展开态内嵌「设置」界面，配置与密钥直读写 SQLite）。
+# ★ v1.6.6 修复模式下拉「设置…」进不去设置页；默认预置智谱种子密钥自动导入。
+# ★ v1.6.1 悬浮球右键菜单：右键点击悬浮球弹出菜单，含「显示/隐藏聊天面板」
+#   与「退出 aiwindow」（复用确认框），为最直接退出入口，不依赖系统托盘。
+# ★ v1.6.0 后台运行：关闭悬浮窗（delete-event/Alt+F4/WM 关闭）仅隐藏驻留，
+#   托盘图标与设置页「退出应用」按钮为补充退出入口（确认后退出进程）。
+# ★ 开机自启：本服务 [Install] WantedBy=multi-user.target，由 rpm %post /
+#   deb postinst systemctl enable 开机拉起；桌面登录 GUI 由 autostart 双通道启动。
+# 本服务为全包内唯一 systemd 服务（无 aiwindow-local-llm.service）。
+[Unit]
+Description=aiwindow pure-GUI desktop app (single-process cloud AI assistant)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aiwindow
+Group=aiwindow
+WorkingDirectory=/usr/lib/aiwindow
+ExecStart=__PYTHON__ /usr/lib/aiwindow/backend.py
+Environment=AIWINDOW_ETC=/etc/aiwindow
+Environment=AIWINDOW_DATA=/var/lib/aiwindow
+Restart=on-failure
+RestartSec=3
+
+# 只读保护：根文件系统只读，仅允许写数据目录
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/aiwindow
+
+# 内存上限 150M（进程目标 <120M），超出自动重启
+MemoryMax=150M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,24 @@
+[Desktop Entry]
+Type=Application
+Name=aiwindow 划词助手
+Name[zh_CN]=aiwindow 划词助手
+Comment=Lightweight selection AI assistant (pure-GUI desktop app)
+Comment[zh_CN]=轻量划词 AI 助手（纯 GUI 桌面应用）
+# 纯 GUI 桌面应用：桌面登录自启直接启动 backend.py（初始化数据库/导入种子
+# 密钥后拉起悬浮窗 GUI）；无 HTTP 服务、无端口监听，悬浮窗为唯一前台应用。
+# 展开态头部「设置」按钮进入设置界面，配置与密钥直读写 SQLite（AES 加密）。
+# ★ v1.6.6 设置页修复：__init__ 补初始化 _suppress_mode_combo/_last_mode_idx，
+#   修复模式下拉「设置…」进不去设置页；默认预置智谱种子密钥自动导入。
+# ★ v1.6.3 悬浮窗优化：不在任务栏显示、设置按钮紧挨收起、移除右键菜单。
+# ★ v1.6.2 构建修复：build.sh 提前定义 say/ok/warn/die，修复含中文/非 ASCII
+#   工程路径下构建中止（"warn: 未找到命令"）。
+# ★ v1.6.1 悬浮球右键菜单：右键点击悬浮球弹出菜单，含「显示/隐藏聊天面板」
+#   与「退出 aiwindow」（复用确认框），为最直接退出入口，不依赖系统托盘。
+# ★ v1.6.0 后台运行：关闭悬浮窗（delete-event/Alt+F4/WM 关闭）仅隐藏驻留，
+#   托盘图标点击切换显隐、右键菜单/设置页「退出应用」按钮确认后才真正退出。
+Exec=__PYTHON__ /usr/lib/aiwindow/backend.py
+Terminal=false
+Categories=Utility;TextTools;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+X-KDE-autostart-after=panel

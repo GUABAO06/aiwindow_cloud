@@ -1,0 +1,27 @@
+Package: aiwindow
+Version: __VERSION__
+Section: utils
+Priority: optional
+Architecture: __ARCH__
+Depends: python3, openssl
+Maintainer: aiwindow dev <dev@localhost>
+Description: Lightweight selection AI assistant for LoongArch64 Kylin desktop
+ A minimal floating-selection AI assistant built purely on Python standard
+ library (no PySide6/FastAPI/PyInstaller): GTK3 single-window dual-form
+ floating ball (collapsed = ball only / expanded = ball + chat panel in the
+ same top-level window) + in-process module backend (SQLite storage with
+ AES-encrypted cloud API key, urllib cloud forwarding, no HTTP server / no
+ port). Pure-GUI desktop edition: expanded panel embeds a "Settings" page
+ (edit API key / base_url / model / timeout, persist to SQLite, show version
+ and Zhipu provider info, list call logs); chat calls backend.handle_chat
+ in-process; only Zhipu GLM-4.7-Flash cloud mode (default
+ base_url=https://open.bigmodel.cn/api/paas/v4, model=glm-4.7-flash).
+ v1.6.0 adds background residence: closing the floating window (delete-event /
+ Alt+F4 / WM close) only hides it instead of quitting, with a system tray icon
+ (click to toggle, right-click menu to show/quit) and a "Quit" button on the
+ Settings page (with confirmation) as the real exit entry. Desktop autostart
+ launches the floating window GUI; systemd service initializes data when
+ headless and is enabled at boot (multi-user.target). Zero pip dependencies;
+ fully offline build.
+ .
+ zh: 轻量化划词 AI 助手（龙芯版，仅 Python 标准库，解压即用）。

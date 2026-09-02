@@ -1,0 +1,35 @@
+#!/bin/sh
+# aiwindow 卸载后脚本
+#  remove: 停止并禁用后端服务（保留数据与配置）
+#  purge : 同时删除数据目录、配置目录与系统用户
+set -e
+
+USER=aiwindow
+SERVICE=aiwindow-backend.service
+
+_stop_and_disable() {
+    systemctl stop "$SERVICE"  >/dev/null 2>&1 || true
+    systemctl disable "$SERVICE" >/dev/null 2>&1 || true
+    systemctl daemon-reload >/dev/null 2>&1 || true
+}
+
+case "$1" in
+    remove|deconfigure)
+        _stop_and_disable
+        echo "aiwindow: 已卸载软件（数据保留于 /var/lib/aiwindow 与 /etc/aiwindow）"
+        ;;
+    purge)
+        _stop_and_disable
+        rm -rf /var/lib/aiwindow
+        rm -rf /etc/aiwindow
+        if getent passwd "$USER" >/dev/null 2>&1; then
+            userdel "$USER" 2>/dev/null || true
+        fi
+        echo "aiwindow: 已彻底清除数据、配置与系统用户"
+        ;;
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+    *)
+        ;;
+esac
+exit 0

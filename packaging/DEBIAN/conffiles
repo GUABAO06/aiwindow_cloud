@@ -1,0 +1,4 @@
+# conffiles：升级时保留的配置文件（密钥文件属于受保护配置，升级不覆盖）
+# 由构建脚本随 deb 打包；卸载 purge 时由 postrm 一并删除
+/etc/aiwindow/bootstrap.key
+/etc/aiwindow/seed_key.enc

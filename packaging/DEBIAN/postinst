@@ -1,0 +1,45 @@
+#!/bin/sh
+# aiwindow 安装后脚本
+# 职责：创建系统用户与数据目录、保护密钥文件权限、注册服务（纯 GUI 桌面应用）
+set -e
+
+USER=aiwindow
+GROUP=aiwindow
+DATA_DIR=/var/lib/aiwindow
+ETC_DIR=/etc/aiwindow
+SERVICE=aiwindow-backend.service
+
+# 1) 创建系统用户（不可登录）
+if ! getent passwd "$USER" >/dev/null 2>&1; then
+    useradd --system --home-dir "$DATA_DIR" --shell /usr/sbin/nologin \
+        --comment "aiwindow service user" "$USER" \
+        2>/dev/null || useradd --system "$USER"
+fi
+
+# 2) 数据目录与权限
+mkdir -p "$DATA_DIR"
+chown -R "$USER:$GROUP" "$DATA_DIR" 2>/dev/null || true
+chmod 750 "$DATA_DIR"
+
+# 3) 密钥文件权限保护（600：仅 owner=aiwindow 可读，其他用户不可读）
+if [ -f "$ETC_DIR/bootstrap.key" ]; then
+    chown "$USER:$GROUP" "$ETC_DIR/bootstrap.key" 2>/dev/null || true
+    chmod 600 "$ETC_DIR/bootstrap.key"
+fi
+if [ -f "$ETC_DIR/seed_key.enc" ]; then
+    chown "$USER:$GROUP" "$ETC_DIR/seed_key.enc" 2>/dev/null || true
+    chmod 600 "$ETC_DIR/seed_key.enc"
+fi
+
+# 4) 注册服务（开机自启，纯 GUI 桌面应用唯一 systemd 服务）
+#    无图形会话时仅初始化数据后退出；桌面 GUI 由 /etc/xdg/autostart 登录自启
+#    启动悬浮窗（展开态内嵌「设置」界面）；不注册任何 local-llm 服务）
+systemctl daemon-reload >/dev/null 2>&1 || true
+systemctl enable "$SERVICE" >/dev/null 2>&1 || true
+systemctl restart "$SERVICE" >/dev/null 2>&1 || true
+
+echo "aiwindow: 服务已注册（systemctl status $SERVICE）"
+echo "aiwindow: 纯 GUI 桌面应用 · 智谱 GLM-4.7-Flash（无 HTTP 管理后台、无端口监听）"
+echo "aiwindow: 登录后悬浮窗自启（收缩态悬浮球）；展开态头部「设置」按钮进入设置界面，"
+echo "aiwindow: 可配置密钥/base_url/model/timeout、查看版本与智谱信息、调用日志列表"
+exit 0
